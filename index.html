@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+    <link
+      href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css"
+      rel="stylesheet"
+    />
+    
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      #map {
+        width: 75%;
+        height: 100%;
+        float: left;
+      }
+      #sidebar {
+        width: 25%;
+        height: 100%;
+        float: left;
+        overflow-y: auto;
+        border-left: 1px solid #ccc;
+        padding: 10px;
+        box-sizing: border-box;
+      }
+      #sidebar h3 {
+        margin-top: 0;
+        color: #333;
+      }
+      #sidebar .loading {
+        color: #666;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+        <div id="sidebar">
+      <div>Click a city label on the map</div>
+    </div>
+    
+    <script>
+      const map = new maplibregl.Map({
+        container: "map",
+        style: "https://tiles.openfreemap.org/styles/positron",
+        center: [13.405, 52.52],
+        zoom: 6,
+      });
+
+      map.on("load", () => {
+        map.on("idle", () => {
+          if (!map.getLayer("cities-click")) {
+            map.addLayer({
+              id: "cities-click",
+              type: "symbol",
+              source: "openmaptiles",
+              "source-layer": "place",
+              filter: ["all", ["==", "class", "city"]],
+              layout: {
+                visibility: "visible",
+                "text-field": ["get", "name"],
+                "text-size": 14,
+                "text-allow-overlap": false,
+                "icon-image": "",
+              },
+              paint: {
+                "text-color": "#ffffff",
+                "text-halo-color": "#000000",
+                "text-halo-width": 1.5,
+              },
+            });
+          }
+        });
+      });
+
+      map.on("mouseenter", "cities-click", () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", "cities-click", () => {
+        map.getCanvas().style.cursor = "";
+      });
+
+      map.on("click", "cities-click", async (e) => {
+        const features = map.queryRenderedFeatures(e.point, {
+          layers: ["cities-click"],
+        });
+        if (features.length > 0) {
+          const props = features[0].properties;
+          const cityName = props.name || "City";
+          const wikiTitle = props.name_en || props.name || "Berlin";
+
+          const sidebar = document.getElementById("sidebar");
+          sidebar.innerHTML = '<div class="loading">Loading Wikipedia...</div>';
+
+          const wikiContent = await fetchWikipedia(wikiTitle);
+          sidebar.innerHTML = wikiContent;
+        }
+      });
+
+      async function fetchWikipedia(cityName) {
+        try {
+          const response = await fetch(
+            `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
+              cityName
+            )}`
+          );
+          const data = await response.json();
+
+          if (data.extract_html) {
+            return `<h3>${cityName}</h3>${data.extract_html}`;
+          } else if (data.type === "disambiguation") {
+            return `<h3>${cityName}</h3><p>Multiple meanings. Try a more specific search.</p>`;
+          } else {
+            return `<h3>${cityName}</h3><p>No Wikipedia summary found.</p>`;
+          }
+        } catch (error) {
+          return `<h3>${cityName}</h3><p>Wikipedia info temporarily unavailable.</p>`;
+        }
+      }
+    </script>
+  </body>
+</html>
